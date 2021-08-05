@@ -175,6 +175,8 @@ allVs <- allVs %>%
 
 
 ## select relevant columns
+# create data frame for ACQ then remove
+# a monocular and binocular score for each pps
 selectCs <- allCs %>%
   select(Participant.Private.ID, Eye.Condition,
          Task.Name, Trial.Number, Screen.Name,
@@ -182,7 +184,27 @@ selectCs <- allCs %>%
          Attempt, Correct, Incorrect,
          Reaction.Time,
          ACQ, ACQ_answer)
+csACQ <- selectCs %>%
+  filter(Screen.Name == "Screen 1")
+selectCs <- selectCs %>%
+  filter(Screen.Name != "Screen 1") %>%
+  select(-ACQ, - ACQ_answer)
 
+# change screen name to numeric
+selectCs$Screen.Name <- sub("^.....", "", selectCs$Screen.Name)
+selectCs$Screen.Name <- as.numeric(selectCs$Screen.Name)
+
+# create contrast and remove screen.name
+selectCs <- selectCs %>%
+  mutate(contrast = 101 - Screen.Name)
+
+selectCs <- selectCs %>%
+  select(-Screen.Name)
+
+#write.csv(selectCs, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/csLong.csv")
+#write.csv(csACQ, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/csACQ.csv")
+
+# a monocular and binocular score for each pps
 selectVa <- allVa %>%
   select(Participant.Private.ID, Eye.Condition,
          Task.Name, Trial.Number, Screen.Name,
@@ -190,13 +212,53 @@ selectVa <- allVa %>%
          Attempt, Correct, Incorrect,
          Reaction.Time,
          ACQ, ACQ_answer)
+vaACQ <- selectVa %>%
+  filter(Screen.Name == "Screen 1")
+selectVa <- selectVa %>%
+  filter(Screen.Name != "Screen 1") %>%
+  select(-ACQ, - ACQ_answer)
 
+# revalue screen name to logMAR and then drop Screen.Name
+selectVa <- selectVa %>%
+  mutate(logMAR = case_when(
+    Screen.Name == "Level1" ~ 1.1,
+    Screen.Name == "Level2" ~ 1,
+    Screen.Name == "Level3" ~ 0.9,
+    Screen.Name == "Level4" ~ 0.8,
+    Screen.Name == "Level5" ~ 0.7,
+    Screen.Name == "Level6" ~ 0.6,
+    Screen.Name == "Level7" ~ 0.5,
+    Screen.Name == "Level8" ~ 0.4,
+    Screen.Name == "Level9" ~ 0.3,
+    Screen.Name == "Level10" ~ 0.2,
+    Screen.Name == "Level11" ~ 0.1,
+    Screen.Name == "Level12" ~ 0.0,
+    Screen.Name == "Level13" ~ -0.1,
+    Screen.Name == "Level14" ~ -0.2,
+    Screen.Name == "Level15" ~ -0.3
+  ))
+
+selectVa <- selectVa %>%
+  select(-Screen.Name)
+
+#write.csv(selectVa, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/vaLong.csv")
+#write.csv(vaACQ, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/vaACQ.csv")
+
+# one row per participant x size x position (distance)
+# pivot_wider()
 selectFitts <- allFitts %>%
   select(Participant.Private.ID, Eye.Condition,
          Task.Name, Spreadsheet, Trial.Number,
          structure, xR, yR, xL, yL, size,
          Reaction.Time)
 
+#write.csv(selectFitts, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/fittsLong.csv")
+
+# mean RT of first 4 searchers 
+# find 3 - number and time
+# find as many as you can, number + total time
 selectVs <- allVs %>%
   select(Participant.Private.ID, Eye.Condition,
          Trial.Number, Attempt, Reaction.Time)
+
+write.csv(selectVs, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/vsLong.csv")
