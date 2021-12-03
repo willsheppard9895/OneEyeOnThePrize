@@ -89,6 +89,7 @@ for(i in fn_all){
 
 ####### combine data frames #######
 # CS one eye
+`task-n858`$Reaction.Time <- as.numeric(`task-n858`$Reaction.Time)
 csOneFirst <- bind_rows(`task-j73i`, `task-bfvh`, `task-n858`, `task-3x99`, `task-38w1`, 
                         `task-pi5h`, `task-hfl1`, `task-opgx`,
                         `task-lwqo`, `task-h6z8`
@@ -201,8 +202,8 @@ selectCs <- selectCs %>%
 selectCs <- selectCs %>%
   select(-Screen.Name)
 
-#write.csv(selectCs, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/csLong.csv")
-#write.csv(csACQ, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/csACQ.csv")
+write.csv(selectCs, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/csLong.csv")
+write.csv(csACQ, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/csACQ.csv")
 
 # a monocular and binocular score for each pps
 selectVa <- allVa %>%
@@ -241,8 +242,8 @@ selectVa <- selectVa %>%
 selectVa <- selectVa %>%
   select(-Screen.Name)
 
-#write.csv(selectVa, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/vaLong.csv")
-#write.csv(vaACQ, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/vaACQ.csv")
+write.csv(selectVa, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/vaLong.csv")
+write.csv(vaACQ, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/vaACQ.csv")
 
 # one row per participant x size x position (distance)
 # pivot_wider()
@@ -252,13 +253,14 @@ selectFitts <- allFitts %>%
          structure, xR, yR, xL, yL, size,
          Reaction.Time)
 
-#write.csv(selectFitts, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/fittsLong.csv")
+write.csv(selectFitts, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/fittsLong.csv")
 
 # mean RT of first 4 searchers 
 # find 3 - number and time
 # find as many as you can, number + total time
 selectVs <- allVs %>%
   select(Participant.Private.ID, Eye.Condition,
-         Trial.Number, Attempt, Reaction.Time)
+         Trial.Number, Attempt, Reaction.Time,
+         X.Coordinate, Y.Coordinate, VS_Puzzle)
 
 write.csv(selectVs, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/vsLong.csv")

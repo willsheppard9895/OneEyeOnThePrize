@@ -48,17 +48,17 @@ summaryVa <- vaClean %>%
 fitCs <- quickpsy(d = summaryCs, x = contrast, k = Percentage.Correct, 
                 grouping = c("Participant.Private.ID", "Eye.Condition"), 
                 xmin = 1, xmax = 100, guess = 1/26, lapse = 0.03, 
-                prob = 0.17, parini = c(0, log2(100)),
+                prob = 0.17, parini = c(1, 25),
                 log = TRUE)
-plot(fitCs, color = Eye.Condition)+
-  xlim(0, log2(100))
+plot(fitCs, color = Eye.Condition)#+
+  #xlim(0, log2(100))
 
-print(fitCs$thresholds)
-
+#print(fitCs$thresholds)
+#csThreshHun <- as.data.frame(fitCs$thresholds)
 csThresh <- as.data.frame(fitCs$thresholds)
 csThresh <- csThresh %>%
   pivot_wider(id_cols = Participant.Private.ID, names_from = Eye.Condition, values_from = thre)
-write.csv(csThresh, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/csThreshold.csv")
+#write.csv(csThresh, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/csThreshold.csv")
 
 ggplot(csThresh, aes(x = Eye.Condition, y = thre))+
   geom_point()
@@ -66,7 +66,7 @@ ggplot(csThresh, aes(x = Eye.Condition, y = thre))+
 fitVa <- quickpsy(d = summaryVa, x = logMAR, k = Percentage.Correct, 
                   grouping = c("Participant.Private.ID", "Eye.Condition"), 
                   xmin = -.3, xmax = 1.2, guess = 1/26, lapses = 0.03,
-                  prob = 0.17, parini = c(-0.3, 1.2))
+                  prob = 0.17, parini = c(0, .5))
 plot(fitVa, color = Eye.Condition)+
   xlim(-.3, 1.2)
 print(fitVa$thresholds)
@@ -75,7 +75,7 @@ vaThresh <- as.data.frame(fitVa$thresholds)
 
 vaThresh <- vaThresh %>%
   pivot_wider(id_cols = Participant.Private.ID, names_from = Eye.Condition, values_from = thre)
-#write.csv(vaThresh, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/vaThreshold.csv")
+write.csv(vaThresh, "C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/vaThreshold.csv")
 
 summaryVa$logMAR <- as.factor(summaryVa$logMAR)
 
