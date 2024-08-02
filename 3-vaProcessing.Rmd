@@ -1,0 +1,193 @@
+---
+title: "3-vaProcessing"
+author: "Will Sheppard"
+date: "2024-01-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+
+require(tidyverse)
+require(quickpsy)
+# import functions
+source('functions_visionProcessing_and_threshEstimation.R')
+
+```
+
+```{r import data}
+
+# import data
+vaImport <- read_csv("../data/processed/vaLong.csv")
+vaConv  <- read_csv("../logmarConv.csv")
+
+pps <- read_csv("../data/finalParticipants.csv")
+pps <- pps$x
+
+va <- vaImport %>%
+  filter(Participant.Private.ID %in% pps) %>%
+  group_by(Participant.Private.ID)%>%
+  mutate(id = dplyr::cur_group_id()) 
+
+```
+
+```{r carete summary df}
+
+mono <- va %>%
+  filter(Eye.Condition == "Mono")
+binoc <- va %>%
+  filter(Eye.Condition == "Binoc")
+
+dataMono <- summShortVA(mono) %>%
+  mutate(Eye.Condition = "Mono")
+dataBinoc <-summShortVA(binoc)%>%
+  mutate(Eye.Condition = "Binoc")
+
+dataMerge <- bind_rows(dataMono, dataBinoc)
+
+data <- merge(dataMerge, vaConv) %>%
+  mutate(logMARreal = round(logMARreal, digits = 2))
+```
+
+set the parameters for the model estimation
+g = guess rate
+```{r params}
+
+gDenom = 26
+g = 1/gDenom
+p <- g + .5 * (1 - g)
+#xMIN = 
+```
+
+
+
+```{r  first fit}
+data$logMARold <- data$logMAR
+data$logMAR <- data$logMARreal
+pplist <- sort(unique(data$id))
+condList <- unique(data$Eye.Condition)
+#condList <- 0:1
+#pplist <- c(1:15)
+#pplist <- 1:5
+
+
+thresh <- data.frame(matrix(
+  data = NA,
+  nrow = length(pplist)*length(condList),
+  ncol = 6))
+  
+cols <- c("ppid", "condition",
+            "threshold", "percCorrect",
+            "threshLower", "threshUpper")
+
+
+colnames(thresh) <- cols
+
+rm(cols)
+
+row = 0
+
+
+
+#data <- subset(data, ppid != 9 | condition != 2)
+
+for (pp in pplist) {
+  #ppData <- data %>%
+   # filter(ppid == pp)
+  
+  for (cond in condList) {
+    d <- data %>%
+      filter(id == pp) %>%
+      filter(Eye.Condition == cond)# %>%
+      #filter(logMAR > 10) #%>%
+      #filter(logMAR < 21)
+    print(paste("pp = ", pp))
+    print(paste("cond = ", cond))
+    
+    ## check for long runs
+    # create lists of where perc correct = 0
+    runs = rle(d$percCorrect == 0)
+    
+    # where do these runs exceed length 2
+    longRuns = which(runs$values == TRUE & runs$lengths >=2)
+    
+    # check if these are present in the data, they are
+    longRun <- any(longRuns)
+    print(paste("long runs:", any(longRuns)))
+    
+    if(longRun == TRUE){
+      # where do these runs end?
+      runs.lengths.cumsum = cumsum(runs$lengths)
+      ends = runs.lengths.cumsum[longRuns]
+      
+      
+      # where do these runs start?
+      newindex = ifelse(longRuns>1, longRuns-1, 0)
+      starts = runs.lengths.cumsum[newindex] + 1
+      if (0 %in% newindex) starts = c(1,starts)
+      
+      print(paste("starts: ", starts, "ends: ", ends))
+      
+      cut = max(ends) - 1
+      
+      
+      cutCon <- d$logMAR[cut]
+      d <- d %>%
+        filter(logMAR >= cutCon)
+      
+    }
+    
+    row = row + 1
+    
+    xMIN <- min(d$logMAR)
+    xMAX <- max(d$logMAR)
+    minPercCorr = min(d$percCorrect)
+    minlogMAR = min(d$logMAR)
+
+    
+    if (minPercCorr < p) {
+      fitOne <- quickpsy(d = d, x = logMAR, k = totalCorrect, n = totalAttempt,
+                       guess = g, lapses = TRUE, bootstrap = 'nonparametric',
+                       xmin = xMIN, xmax = xMAX, fun = logistic_fun)
+      
+      ## 
+    x <- plotcurves(fitOne)+
+      scale_x_continuous(limits = c(min(data$logMAR), max(data$logMAR)), breaks = seq(min(data$logMAR), max(data$logMAR), 0.1))+
+      scale_y_continuous(limits = c(0,1), breaks = seq(0, 1, 0.1))+
+      ggtitle(paste("pp", pp, ":", "condition ", cond, "threshold :", fitOne$thresholds[1]))
+    show(x)
+    
+    thresh[row, 1] <- pp
+    thresh[row, 2] <- cond
+    thresh[row, 3] <- fitOne$thresholds[1]
+    thresh[row, 4] <- fitOne$thresholds[2]
+    thresh[row, 5] <- fitOne$thresholds[3]
+    thresh[row, 6] <- fitOne$thresholds[4]
+      
+    } else{
+      thresh[row, 1] <- pp
+      thresh[row, 2] <- cond
+      thresh[row, 3] <- minlogMAR
+      thresh[row, 4] <- p
+      thresh[row, 5] <- minlogMAR
+      thresh[row, 6] <- minlogMAR
+    }
+    
+    
+  }
+}
+
+thresh$threshold <- round(thresh$threshold, digits = 2)
+
+thresh <- thresh %>%
+  filter(threshold < 1)%>%
+  filter(threshold > -0.6)
+
+write.csv(thresh, "../data/processed/vaLong.csv")
+
+
+
+```

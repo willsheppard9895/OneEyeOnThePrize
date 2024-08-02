@@ -1,0 +1,271 @@
+---
+title: "5-visSearchProcessing"
+author: "Will Sheppard"
+date: "2024-01-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries 1}
+
+require(tidyverse)
+require(rstatix)
+require(ggpubr)
+```
+
+
+```{r read data}
+dataImport <- read_csv("../data/processed/vsLong.csv")
+head(dataImport)
+
+pps <- read_csv("../data/finalParticipants.csv")
+pps <- pps$x
+
+allData <- dataImport %>%
+  filter(Participant.Private.ID %in% pps)%>%
+  group_by(Participant.Private.ID)%>%
+  mutate(id = as.factor(dplyr::cur_group_id()))
+```
+
+remove extra tasks
+```{r remove tasks}
+
+dataCorrect <- allData %>%
+  filter(correct == 1)
+```
+
+quick first plots
+```{r initial plots}
+
+ggplot(dataCorrect, aes(x = Reaction.Time, fill = Eye.Condition))+
+  geom_density(alpha = 0.4)+
+  facet_grid(~VS_Puzzle)
+
+ggplot(dataCorrect, aes(y = Reaction.Time, x = Eye.Condition, fill = VS_Puzzle))+
+  geom_boxplot()
+
+```
+
+lets get rid of the extreme outliers
+
+let's identify and plot the extreme values - 3IQR above or below 3rd or first quartile
+
+There are no extreme data points. 
+```{r is extreme}
+
+extremePoints <- dataCorrect %>%
+  group_by(id, Eye.Condition, VS_Puzzle)%>%
+  mutate(ext = as.numeric(is_outlier(Reaction.Time)))
+
+(sum(extremePoints$ext)/length(extremePoints$ext))*100
+
+```
+
+puzzle 3 = 0
+4 = 1
+1 = 2
+2 = 3
+
+```{r modelling data prep}
+
+d <- dataCorrect%>%
+  rename(visCond = Eye.Condition,
+         rt = Reaction.Time
+         )%>%
+  mutate(visCondNum = case_when(
+    visCond == 'Mono' ~ 1,
+    TRUE ~ 0
+  ))%>% ungroup() %>%
+  mutate(puzzleNum = case_when(
+    VS_Puzzle == "Image3.PNG" ~ 0,
+    VS_Puzzle == "Image4.PNG" ~ 1,
+    VS_Puzzle == "Image1.PNG" ~ 2,
+    VS_Puzzle == "Image2.PNG" ~ 3
+  ))%>%
+  mutate(puzzleNum = as.factor(puzzleNum))
+
+levels(d$puzzleNum)
+
+d %>%
+  shapiro_test(rt)
+
+```
+
+let extract a mean response time for each participant in each conditions
+```{r mean extract, eval=FALSE}
+
+means <- d %>%
+  group_by(id, visCondNum)%>%
+  summarise(visSearch = mean(rt))
+
+write.csv(means, "./visualSearchTimes.csv")
+```
+
+effect of visual condition approaching sig
+```{r linear model}
+
+linMod <- lm(rt ~ visCondNum,
+             data = d)
+
+summary(linMod)
+```
+import libraries for mlm
+```{r mlm libraries}
+require(lme4)
+require(lmerTest)
+```
+
+RT data, so we will only use inverse gausian and gamma distributions.
+fixed effects: eye condition
+random int: id, puzzle
+random slope: eye condition within id
+
+invGmax  <- glmer(rt ~ visCondNum + (visCondNum|id) + (1|VS_Puzzle),
+              family = inverse.gaussian(link = "identity"),
+              data = d, 
+              control = glmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 10000000))
+              )
+              
+  
+
+```{r invG}
+
+# failed to converge
+# random slope has the lowest variance
+invGmax  <- glmer(rt ~ visCondNum + (visCondNum|id) + (1|puzzleNum),
+              family = inverse.gaussian(link = "identity"),
+              data = d, 
+              control = glmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 10000000))
+              )
+summary(invGmax)
+
+#invGtwo <- glmer(rt ~ visCondNum + (1|id) + (1|VS_Puzzle),
+#              family = inverse.gaussian(link = "identity"),
+#              data = d, 
+#              control = glmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = #10000000))
+#              )
+
+#summary(invGtwo)
+
+
+invGfinal <- invGmax
+```
+
+
+let's look at gamma
+```{r gamma}
+
+# doesn't converge
+# puzzle has the lowest variance
+# gammaMax <- glmer(rt ~ visCondNum + (visCondNum|id) + (1|VS_Puzzle),
+#               family = Gamma(link = "identity"),
+#               data = d, 
+#               control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 10000000))
+#               )
+# summary(gammaMax)
+
+gammaTwo <- glmer(rt ~ visCondNum + (visCondNum|id),
+              family = Gamma(link = "identity"),
+              data = d, 
+              control = glmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 10000000))
+              )
+summary(gammaTwo)
+
+gammaFinal <- gammaTwo
+```
+
+lets compare the three models
+intercepts indicate performance when fixed factors = 0
+```{r models}
+require(modelsummary)
+require(tibble)
+require(flextable)
+
+anova(invGfinal, gammaFinal)
+
+modelsummary(list("Linear" = linMod, "Inverse Gaussian" = invGfinal, "Gamma" = gammaFinal),
+             stars = T,
+             title = "Visual search model outpus",
+             estimate = "{estimate} [{conf.low}, {conf.high}]{stars}",
+             statistic = "({std.error})",
+             shape = term ~ model + statistic, #statistics in separate columns
+             fmt = fmt_decimal(digits = 2, pdigits = 3),
+             output = "vsDistTable.html"
+             )
+
+modelsummary(list("Inverse Gaussian" = invGfinal),
+             stars = T,
+             title = "Visual search model outpus",
+             estimate = "{estimate} [{conf.low}, {conf.high}]{stars}",
+             statistic = "({std.error})",
+             shape = term ~ model + statistic, #statistics in separate columns
+             fmt = fmt_decimal(digits = 2, pdigits = 3)
+             )
+
+```
+
+r2
+```{r r2}
+
+require(performance)
+
+r2_nakagawa(invGfinal)
+
+require(r2mlm)
+
+r2mlm(invGfinal)
+
+
+```
+
+
+```{r paper plot}
+
+
+vsFig <- d %>%
+  group_by(visCond) %>%
+  summarise(se = sd(rt, na.rm = TRUE)/sqrt(length(rt)),
+            rt = mean(rt)) %>%
+  ggplot(aes(x = visCond, y = rt, fill = visCond)) +
+  geom_col(position = position_dodge(0.8), width = 0.7)+
+  geom_errorbar(
+    aes(ymin = rt-se, ymax = rt+se),
+    width = 0.2, position = position_dodge(0.8)
+    )+
+  scale_fill_manual(values = c("grey80", "grey20"))+
+  theme_bw()+
+  scale_x_discrete(labels = c("Binocular vision", "Monocular vision"))+
+  # set axis limits in coord_cartesian
+ coord_cartesian(ylim = c(8000, 15000))+
+  scale_y_continuous(breaks = seq(8000, 15000, by = 1000))+
+  ylab("Mean search time (ms)")+
+  theme(axis.title.x = element_blank(),
+        legend.title = element_blank(),
+        legend.background = element_blank(),
+        legend.position = "none",
+        text = element_text(family = "serif",
+                            size = 11))+
+  geom_signif(stat="signif",position="identity",
+                 comparisons=list(c("Binoc","Mono")),map_signif_level = TRUE,
+              annotations = "***")
+
+show(vsFig)
+```
+
+```{r save figure}
+
+dpi = 800
+w = 13
+h = w*0.75
+
+ggsave('../figures/SUBMISSION/figure3.png',
+       plot = vsFig,
+       dpi = dpi,
+       width = w,
+       height = h,
+       units = "cm")
+
+```

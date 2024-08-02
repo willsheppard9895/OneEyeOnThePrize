@@ -1,0 +1,34 @@
+---
+title: "8-perceptualLoad"
+author: "Will Sheppard"
+date: "2024-07-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Create data frames
+- this script aims to quantify the 'perceptual load' of each task to allow us to make the comparisons that we begin to introduce in the discussion. 
+
+We speak about the Tsirlin et al. (2018) and the black et al. (2021) papers. 
+
+We aim to quantify the relationship between the effect of visual condition and search time with regards to the number of targets presented to the participants at a given time.
+
+We will achieve this by calculating the effect of visual conditions divided by the model intercept. In the case of the current paper this would be 1881.25/12509.25 = 0.1503887 or an increase of ~15.04%. 
+
+However, it is not enough to simply compare this figure 
+
+Black et al. - compare with TMT A task
+
+```{r our data}
+
+allDist <- 139
+
+ourInt <- 12509.25
+ourEffect <- 1881.25
+ourIncPerc <- ourEffect*100/ourInt
+
+ourEffectPerDist <- ourEffect/allDist
+```

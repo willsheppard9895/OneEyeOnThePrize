@@ -1,0 +1,88 @@
+---
+title: "1-dataPrep"
+author: "Will Sheppard"
+date: "2023-12-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+
+require(tidyverse)
+
+```
+load the demographics data
+75 participants to begin with
+
+```{r import demog data}
+
+demog19 <- read.csv("../data/data_exp_53563-v19_questionnaire-6dum.csv")
+demog20 <- read.csv("../data/data_exp_53563-v20_questionnaire-6dum.csv")
+demog21 <- read.csv("../data/data_exp_53563-v21_questionnaire-6dum.csv")
+
+allDemog <- bind_rows(demog19, demog20, demog21) %>%
+  select(-starts_with("GM"), -starts_with("FM"), -starts_with("PS"), -contains("cataract_pred"), -contains("GVF"), starts_with("branch"))%>%
+  filter(Event.Index != "END OF FILE")
+
+```
+
+remove participants with a visual condition
+```{r remove vis conds}
+
+cataracts <- allDemog %>% 
+  filter(cataract_surgery_stage.quantised == 1 | cataract_surgery_stage.quantised == 4)
+
+generalCond <- allDemog %>%
+  filter(medical_condition_vision.1 != "No" | medical_condition_motor.1 != "No")
+
+cataractsPPS <- unique(cataracts$Participant.Private.ID)
+generalCondPPS <- unique(generalCond$Participant.Private.ID)
+
+ppsEx <- unique(c(cataractsPPS, generalCondPPS))
+length(ppsEx)
+
+demog <- allDemog %>%
+  filter(!Participant.Private.ID %in% ppsEx)
+
+pps <- unique(demog$Participant.Private.ID)
+#write.csv(pps, "../data/finalParticipants.csv")
+```
+
+```{r age}
+
+age <- demog %>%
+  summarise(minAge = min(age_in_years),
+            maxAge = max(age_in_years),
+            meanAge = round(mean(age_in_years), digits = 2),
+            sdAge = round(sd(age_in_years), digits = 2))
+
+```
+
+```{r gender}
+
+sex <- table(demog$sex)
+sex
+round((sex[1]/(sex[1]+sex[2]))*100, digits = 2)
+```
+
+```{r education}
+
+edu <- table(demog$education)
+edu <- round((edu/65)*100, digits = 2)
+edu
+
+```
+
+```{r handedness}
+
+hands <- table(demog$Handedness)
+hands
+round((hands[2]/(hands[1]+hands[2]))*100, digits = 2)
+
+```
+
+
+

@@ -1,0 +1,96 @@
+---
+title: "6-csAnalysis"
+author: "Will Sheppard"
+date: "2024-01-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries 1}
+
+require(tidyverse)
+require(rstatix)
+require(lme4)
+require(lmerTest)
+require(modelsummary)
+```
+
+
+```{r import data}
+
+data <- read.csv("../data/processed/csThresh.csv")
+```
+
+```{r linear model}
+
+linMod <- lm(cs ~ condition,
+             data = data)
+summary(linMod)
+```
+
+condition is no a sig predictor
+```{r mlm 1}
+
+idMod <- lmer(cs ~ condition + (1|ppid),
+             data = data)
+
+summary(idMod)
+
+```
+not enough data points for a random slope
+```{r mlm 2, eval=FALSE}
+
+slopeMod <- lmer(cs ~ condition + (condition|ppid),
+             data = data)
+```
+not enough variance in the condition intercept
+```{r mlm 3, eval=FALSE}
+
+condMod <- lmer(cs ~ condition + (1|ppid) + (1|condition),
+             data = data)
+summary(condMod)
+```
+
+
+```{r model summary}
+modelsummary(list("Random intercept model" = idMod),
+             stars = T,
+             title = "CS model output",
+             estimate = "{estimate} [{conf.low}, {conf.high}]{stars}",
+             statistic = "({std.error})",
+             shape = term ~ model + statistic, #statistics in separate columns
+             fmt = fmt_decimal(digits = 2, pdigits = 3)
+             )
+```
+
+```{r violin plot}
+
+violin <- ggplot(data, mapping = aes(x = condition, y = cs))+
+  geom_violin(draw_quantiles = c(0.5))+
+  geom_jitter(height = 0, width = 0.2, alpha = .6)+
+  scale_x_discrete(labels = c("Binocular vision", "Monocular vision"))+
+  theme_bw()+
+  theme(#legend.title = element_blank(),
+        axis.title.x.bottom = element_blank())+
+  ylab("CS (log units)")
+
+show(violin)
+```
+
+```{r save cs plot}
+
+dpi = 800
+h = 4
+w = 6
+
+ggsave('../figures/csViolin.png',
+       plot = violin,
+       dpi = dpi,
+       width = w,
+       height = h)
+
+```
+

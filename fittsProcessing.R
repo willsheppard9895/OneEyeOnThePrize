@@ -15,7 +15,8 @@ fittsSummary <- allData %>%
             yL = first(yL))
 
 # extract position from structure
-fittsSummary$pos <- sub(".....$", "", fittsSummary$structure)
+fittsSummary$pos <- as.factor(str_extract(fittsSummary$structure, "(?<=pos)."))
+
 
 # pivot wider by eye conditon and structure
 # 1 row per participant

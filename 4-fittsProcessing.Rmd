@@ -1,0 +1,443 @@
+---
+title: "4-fittsProcessing"
+author: "Will Sheppard"
+date: "2024-01-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries 1}
+
+require(tidyverse)
+require(rstatix)
+```
+
+
+```{r read data}
+dataImport <- read_csv("../data/processed/fittsLong.csv")
+head(dataImport)
+
+pps <- read_csv("../data/finalParticipants.csv")
+pps <- pps$x
+
+
+```
+
+
+```{r pos}
+
+
+allData <- dataImport %>%
+  filter(Participant.Private.ID %in% pps)%>%
+  group_by(Participant.Private.ID)%>%
+  mutate(id = as.factor(dplyr::cur_group_id()))%>%
+  mutate(dist = sqrt(xR^2 + yR^2))%>%
+  mutate(diffInd = log2((2*dist)/size))
+# extract position from structure
+allData$pos <- as.factor(str_extract(allData$structure, "(?<=pos)."))
+
+```
+
+First, lets look at some v basic distribution and box plots.
+there seems to be some really extreme 
+```{r initial plots}
+
+
+ggplot(allData, aes(x = Reaction.Time, fill = as.factor(structure)))+
+  geom_boxplot()
+
+```
+
+let's identify and plot the outlier values - 1.5 IQR above or below 3rd or first quartile
+```{r is extreme}
+
+extremePoints <- allData %>%
+  group_by(id, Eye.Condition, structure) %>%
+  mutate(ext = as.numeric(is_outlier(Reaction.Time)))
+
+
+(sum(extremePoints$ext)/length(extremePoints$ext))*100
+
+# moving through 4 layers of filtering to get rid of outliers. 
+# first remove general outliers
+# then get rid of outliers on the individual level (no task component)
+# get rid of outliers on a task level (no indivisual component)
+# get rid of any remaining outliers on a micro level
+outliersRemoved <- allData %>% 
+  # mutate(outlier = is_outlier(Reaction.Time))%>% # create logical markers for general outliers. this will get rid of the very extreme points
+  # mutate(outlier = as.numeric(outlier))%>%
+  # filter(outlier == 0)%>%
+  # group_by(id)%>% # this should catch any very strange behaviours at an individual level
+  # mutate(outlier = is_outlier(Reaction.Time))%>% # 
+  # mutate(outlier = as.numeric(outlier))%>%
+  # filter(outlier == 0)%>%
+  # group_by(Eye.Condition, structure)%>% # this will catch strange behaviours at a task level
+  # mutate(outlier = is_outlier(Reaction.Time))%>%
+  # mutate(outlier = as.numeric(outlier))%>%
+  # filter(outlier == 0) %>%
+  group_by(id, Eye.Condition, structure)%>% # this will catch strange behaviours al the microlevel
+  mutate(outlier = is_outlier(Reaction.Time))%>%
+  mutate(outlier = as.numeric(outlier))%>%
+  filter(outlier == 0) %>%
+  ungroup()
+
+percRem = (length(allData$Participant.Private.ID)-length(outliersRemoved$Participant.Private.ID))*100/length(allData$Participant.Private.ID)
+
+# this removes 11% of data, which is a lot
+outliersRemoved %>%
+  ggplot(aes(x = as.factor(diffInd), y = Reaction.Time, color = Eye.Condition))+
+    geom_boxplot()
+
+```
+
+let's remove the extreme data points: extra long movements suggest that they were not concentrating and extra short movemnts suggest that they haave guessed the posiitons
+```{r tidy data set}
+
+data <- outliersRemoved %>%
+  select(id, Eye.Condition, diffInd, Reaction.Time, structure)%>%
+  rename(visCond = Eye.Condition,
+         rt = Reaction.Time
+         )%>%
+  mutate(visCondNum = case_when(
+    visCond == 'Mono' ~ 1,
+    TRUE ~ 0
+  ))%>%
+  mutate(diffInd = round(diffInd, digits = 2))
+
+vs <- read.csv("./visualSearchTimes.csv")
+
+d <- merge(data, vs)%>%
+  select(-X)
+
+d$diffInd.s <- as.numeric(scale(d$diffInd))
+d$visSearch.s <- as.numeric(scale(d$visSearch))
+
+d$visCond <- as.factor(d$visCond)
+
+str(d)
+```
+
+
+import libraries for mlm
+```{r mlm libraries}
+require(lme4)
+require(lmerTest)
+```
+
+
+first we create a linear model with no random factors
+no significant interaction
+```{r linear mod}
+
+# no interaction, remove
+linMod <- lm(rt ~ visSearch.s + visCondNum + diffInd.s + visCondNum*diffInd.s,
+             data = d)
+summary(linMod)
+
+linModFinal <- linMod
+
+```
+Start with the maximal model and then remove factors starting with the least variance
+
+glmer(rt ~ visSearch.s + visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
+                   (visCondNum*diffInd.s|id), # RANDOM
+              family = inverse.gaussian(link = "identity"),
+              data = data, 
+              control = glmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 10000000)))
+              
+it is reasonable to expect the slopes fo visual condition to vary between participants
+
+no slope for diffInd as this has been shown to be a stable effect across individuals
+
+the effect of search time on RT should be the same for all particpants as this is a direct relationship - longer ST = longer RT
+```{r inv g}
+
+
+# # bobyqa - Failed to converge
+# # nloptwrap - failed to converge
+# # Nelder_Mead - failed to converge
+# invGMax <- glmer(rt ~ visSearch.s + visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
+#                    (visCondNum*diffInd.s|id), # RANDOM
+#               family = inverse.gaussian(link = "identity"),
+#               data = d, 
+#               control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 10000000)))
+# summary(invGMax)
+
+# bobyqa - Converged
+# nloptwrap - didn't try
+# Nelder_Mead - didn't try
+invGTwo <- glmer(rt ~ visSearch.s + visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
+                   (visCondNum + diffInd.s|id), # RANDOM
+              family = inverse.gaussian(link = "identity"),
+              data = d, 
+              control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 10000000)))
+summary(invGTwo)
+
+
+invGfinal <- invGTwo
+
+residuals <- resid(invGfinal) 
+
+
+qqnorm(residuals)
+
+```
+
+
+signularity when all possible factors are included. move through removing the slopes one by one from the smallest sd to the largest.
+```{r gamma}
+
+# # bobyqa - Singular
+# # nloptwrap - doesn't converge
+# # Nelder_Mead - doesn't converge
+# gammaMax <- glmer(rt ~ visSearch.s + visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
+#                    (visCondNum*diffInd.s|id), # RANDOM
+#               family = Gamma(link = "identity"),
+#               data = d, 
+#               control = glmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 10000000)))
+# summary(gammaMax)
+# isSingular(gammaMax)
+
+# bobyqa - Converged
+# nloptwrap - didn't try
+# Nelder_Mead - didn't try
+gammaTwo <- glmer(rt ~ visSearch.s + visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
+                   (visCondNum + diffInd.s|id), # RANDOM
+              family = Gamma(link = "identity"),
+              data = d, 
+              control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 10000000)))
+summary(gammaTwo)
+
+# bobyqa - failed to Converge
+# nloptwrap - failed to Converge
+# Nelder_Mead - failed to Converge
+gammaTwoNoST <- glmer(rt ~ visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
+                   (visCondNum + diffInd.s|id), # RANDOM
+              family = Gamma(link = "identity"),
+              data = d, 
+              control = glmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 10000000)))
+summary(gammaTwoNoST)
+
+# bobyqa - failed to converge
+# nloptwrap - is singular
+# Nelder_Mead - failed to converge
+# # (diffInd.s|id) has lowest varaince, remove
+gammaThreeNoST <- glmer(rt ~ visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
+                   (visCondNum|id) + (diffInd.s|id), # RANDOM
+              family = Gamma(link = "identity"),
+              data = d, 
+              control = glmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 10000000)))
+summary(gammaThreeNoST)
+
+# bobyqa - Converged
+# nloptwrap - did not try 
+# Nelder_Mead - did not try
+gammaFourNoST <- glmer(rt ~ visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
+                   (visCondNum|id), # RANDOM
+              family = Gamma(link = "identity"),
+              data = d, 
+              control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 10000000)))
+summary(gammaFourNoST)
+
+gammaFinal <- gammaTwo
+gammaFinalNoST <- gammaFourNoST
+
+gammResiduals <- resid(gammaFinal) 
+
+
+qqnorm(gammResiduals)
+```
+
+lets compare the three models
+intercepts indicate performance when fixed factors = 0
+
+intercept = mean visSEarch, mean diffInd and binocular vision
+  1059.85
+
+VIS SEARCH -  increase of 1 SD = +27.36 ms RT
+
+VIS COND - 39.90*visCond - 3.70*visCond*diffInd
+    monocular vision = 1, therefore, 39.90 - 3.70*diffInd
+    
+DIFF IND - 62.12*diffInd - 3.70*visCond*diffInd
+  MONO - 62.12*diffInd - 3.70*diffInd
+  BINO - 62.12*diffInd
+```{r models}
+require(modelsummary)
+require(tibble)
+require(flextable)
+
+anova(invGfinal, gammaFinal)
+
+modelsummary(list("Linear" = linModFinal, "Inverse Gaussian" = invGfinal, "Gamma" = gammaFinal),
+             stars = T,
+             title = "Clicking task model outpus",
+             estimate = "{estimate} [{conf.low}, {conf.high}]{stars}",
+             statistic = "({std.error})",
+             shape = term ~ model + statistic, #statistics in separate columns
+             fmt = fmt_decimal(digits = 2, pdigits = 3),
+             output = "fittsDistTable.html"
+             )
+
+modelsummary(list("Gamma" = gammaFinal, "Gamma No ST" = gammaFinalNoST),
+             stars = T,
+             title = "Clicking task model outpus",
+             estimate = "{estimate} [{conf.low}, {conf.high}]{stars}",
+             statistic = "({std.error})",
+             shape = term ~ model + statistic, #statistics in separate columns
+             fmt = fmt_decimal(digits = 2, pdigits = 3),
+             gof_omit = 'RMSE|IC|Obs',
+             output = "fittsWithAndWithoutST.html"
+             )
+
+```
+
+the distance * condition interaction is not clear
+```{r interaction deep dive}
+
+d %>%
+  ggplot(aes(x=rt, y=diffInd) ) +
+  geom_bin2d() +
+  theme_bw()+
+  facet_grid(~visCond)
+
+d %>%
+  ggplot(aes(x = rt, fill = as.factor(diffInd)))+
+  geom_density(alpha = 0.4)+
+  facet_grid(~visCond)
+
+d %>%
+  ggplot(aes(x = rt, fill = as.factor(diffInd)))+
+  geom_boxplot()+
+  facet_grid(~visCond)
+
+d %>%
+  mutate(diffInd = as.factor(diffInd))%>%
+  group_by(visCond, diffInd) %>%
+  summarise(se = sd(rt) / sqrt(length(rt)),
+            rt = mean(rt))%>%
+  ggplot(aes(x = diffInd, y = rt))+
+  geom_col(aes(fill = visCond), position = position_dodge(0.8), width = 0.7)+
+  geom_errorbar(
+    aes(ymin = rt-se, ymax = rt+se, group = visCond),
+    width = 0.2, position = position_dodge(0.8)
+    )+
+  scale_fill_manual(values = c("grey80", "grey30"))+
+  xlab("Index of difficulty")+
+  ylab("Response time (ms)")+
+  theme_bw()+
+  theme(legend.title = element_blank())#+
+ # set axis limits in coord_cartesian
+ #coord_cartesian(ylim = c(800, 1300))
+
+ggplot(fortify(gammaFinal), aes(x = rt, y = diffInd, color= visCond)) +
+  stat_summary(fun.data=mean_se, geom="pointrange") +
+  stat_summary(aes(y=.fitted), fun.y=mean, geom="line")
+  
+```
+
+
+
+
+```{r plots again}
+
+fittsFig <- d %>%
+  mutate(visCond = case_when(
+    visCond == "Binoc" ~ "Binocular vision",
+    visCond == "Mono" ~ "Monocular vision"
+  ))%>%
+  ggplot()+
+  stat_summary(
+    aes(y = rt, x = diffInd,
+        group = visCond, color = visCond, shape = visCond),
+    geom = "point",
+    fun.y = "mean"
+  )+
+  geom_smooth(aes(y = rt, x = diffInd,
+              group = visCond, color = visCond, linetype = visCond),
+              method = "lm",
+              se = F)+
+  xlab("Index of difficulty")+
+  ylab("Mean response time (ms)")+
+  theme_bw()+
+  theme(legend.title = element_blank(),
+        legend.background = element_blank(),
+        legend.position = c(0.83, 0.28),
+        text=element_text(family = "serif",
+                          size=11))+
+  scale_color_manual(values = c("grey70", "grey20"))+
+  scale_shape_manual(values = c(16, 3))
+
+show(fittsFig)
+  
+```
+
+
+
+```{r save figure}
+
+dpi = 800
+w = 13
+h = w*.75
+
+ggsave('../figures/SUBMISSION/figure4.png',
+       plot = fittsFig,
+       dpi = dpi,
+       width = w,
+       height = h,
+       units = "cm")
+
+```
+
+
+```{r model maximisation comparison}
+
+gammaMin <- glmer(rt ~ visSearch.s + visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
+                   (1|id), # RANDOM
+              family = Gamma(link = "identity"),
+              data = d, 
+              control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 10000000)))
+
+
+gammaTwo <- glmer(rt ~ visSearch.s + visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
+                   (visCondNum|id), # RANDOM
+              family = Gamma(link = "identity"),
+              data = d, 
+              control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 10000000)))
+
+gammaTwoA <- glmer(rt ~ visSearch.s + visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
+                   (diffInd.s|id), # RANDOM
+              family = Gamma(link = "identity"),
+              data = d, 
+              control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 10000000)))
+
+gammaThree  <- glmer(rt ~ visSearch.s + visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
+                   (visCondNum|id) + (diffInd.s|id), # RANDOM
+              family = Gamma(link = "identity"),
+              data = d, 
+              control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 10000000)))
+
+```
+
+```{r model max table}
+
+modelsummary(list("Intercept only" = gammaMin, 
+                  "Visual condition slope only" = gammaTwo,
+                  "Index of Difficulty slope only" = gammaTwoA,
+                  "Visual condition and index of difficuly slopes" = gammaThree,
+                  "Visual condition and index of difficuly slopes with correlations" = gammaFinal),
+             stars = T,
+             title = "Clicking task model outpus",
+             estimate = "{estimate} [{conf.low}, {conf.high}]{stars}",
+             statistic = "({std.error})",
+             #shape = term ~ model + statistic, #statistics in separate columns
+             fmt = fmt_decimal(digits = 2, pdigits = 3),
+             gof_omit = 'RMSE|IC|Obs'
+             )
+
+```
+
+

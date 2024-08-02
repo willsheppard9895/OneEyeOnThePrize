@@ -2,30 +2,30 @@ library(tidyverse)
 library(quickpsy)
 
 # import data
-cs<- read_csv("C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/csLong.csv")
-va <- read_csv("C:/Users/cn13ws/OneDrive - University of Leeds/msc2021/data/vaLong.csv")
+cs<- read_csv("../data/csLong.csv")
+va <- read_csv("../vaLong.csv")
 
 # clean up the data
-cs <- cs %>%
-  group_by(Participant.Private.ID)%>%
-  mutate(rtUpper = mean(Reaction.Time)+1.96*sd(Reaction.Time),
-         rtLower = mean(Reaction.Time)-1.96*sd(Reaction.Time),
-         logContrast = log2(contrast)
-         )
+#cs <- cs %>%
+#  group_by(Participant.Private.ID)%>%
+#  mutate(rtUpper = mean(Reaction.Time)+1.96*sd(Reaction.Time),
+#         rtLower = mean(Reaction.Time)-1.96*sd(Reaction.Time),
+#         logContrast = log2(contrast)
+#         )
 
-csClean <- cs %>%
-  filter(Reaction.Time < rtUpper)%>%
-  filter(Reaction.Time > rtLower)
+#csClean <- cs %>%
+#  filter(Reaction.Time < rtUpper)%>%
+#  filter(Reaction.Time > rtLower)
 
-va <- va %>%
-  group_by(Participant.Private.ID)%>%
-  mutate(rtUpper = mean(Reaction.Time)+1.96*sd(Reaction.Time),
-         rtLower = mean(Reaction.Time)-1.96*sd(Reaction.Time)
-  )
+#va <- va %>%
+#  group_by(Participant.Private.ID)%>%
+#  mutate(rtUpper = mean(Reaction.Time)+1.96*sd(Reaction.Time),
+#         rtLower = mean(Reaction.Time)-1.96*sd(Reaction.Time)
+#  )
 
-vaClean <- va %>%
-  filter(Reaction.Time < rtUpper)%>%
-  filter(Reaction.Time > rtLower)
+#vaClean <- va %>%
+#  filter(Reaction.Time < rtUpper)%>%
+#  filter(Reaction.Time > rtLower)
 
 # create sumamry measures
 

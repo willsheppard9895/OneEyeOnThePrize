@@ -1,0 +1,244 @@
+---
+title: "2-csProcessing"
+author: "Will Sheppard"
+date: "2023-12-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+
+require(tidyverse)
+require(quickpsy)
+# import functions
+source('functions_visionProcessing_and_threshEstimation.R')
+
+```
+
+
+```{r import data}
+
+# import data
+csImport<- read_csv("../data/processed/csLong.csv")
+
+pps <- read_csv("../data/finalParticipants.csv")
+pps <- pps$x
+
+
+cs <- csImport %>%
+  filter(Participant.Private.ID %in% pps)%>%
+  group_by(Participant.Private.ID)%>%
+  mutate(id = dplyr::cur_group_id())
+
+```
+
+
+```{r carete summary df}
+
+mono <- cs %>%
+  filter(Eye.Condition == "Mono")
+binoc <- cs %>%
+  filter(Eye.Condition == "Binoc")
+
+dataMono <- summShortCS(mono) %>%
+  mutate(Eye.Condition = "Mono")
+dataBinoc <-summShortCS(binoc)%>%
+  mutate(Eye.Condition = "Binoc")
+
+data <- bind_rows(dataMono, dataBinoc)
+```
+
+
+set the parameters for the model estimation
+g = guess rate
+```{r params}
+
+gDenom = 26
+g = 1/gDenom
+p <- g + .5 * (1 - g)
+```
+
+```{r test pps}
+
+pShort <- data %>%
+  filter(id == 2)
+```
+
+we need to write some codeto deal with all of the ceiling participants
+data isn't fitting. Let's just choose the minimum contrast with a success rate grater than p 
+```{r  first fit, eval=FALSE}
+
+data <- data[order(data$id, data$Eye.Condition, data$contrast), ]
+
+
+condList <- unique(data$Eye.Condition)
+
+#pplist <- unique(data$id)
+pplist <- 26
+thresh <- data.frame(matrix(
+  data = NA,
+  nrow = length(pplist)*length(condList),
+  ncol = 5))
+  
+cols <- c("ppid", "condition",
+            "threshold", "percCorrect",
+            "minPercCorrect")
+
+
+colnames(thresh) <- cols
+
+rm(cols)
+
+row = 0
+
+
+for (pp in pplist) {
+  for (cond in condList) {
+    d <- data %>%
+      filter(id == pp) %>%
+      filter(Eye.Condition == cond)
+    
+    print(paste("pp = ", pp))
+    print(paste("cond = ", cond))
+    
+    reducedPerc <- d %>%
+      filter(percCorrect < 1)
+    firstReducedContrast <- max(reducedPerc$contrast)
+    cutMin <- firstReducedContrast+5
+    
+    maxPerc <- d %>%
+      filter(percCorrect == 1)
+    minMaxPerc <- min(maxPerc$contrast)
+    cutMax <- minMaxPerc+3
+    
+    
+    d <- d %>%
+      filter(contrast<=cutMax)
+
+    
+    row = row + 1
+    
+    xMIN <- min(d$contrast)
+    xMAX <- max(d$contrast)
+    minPercCorr = min(d$percCorrect)
+    minContrast = min(d$contrast)
+
+    
+    if (minPercCorr < p) {
+      fitOne <- quickpsy(d = d, x = contrast, k = totalCorrect, n = totalAttempt,
+                       guess = g, lapses = TRUE, bootstrap = 'nonparametric',
+                       xmin = xMIN, xmax = xMAX, fun = logistic_fun
+                       )
+    #x <- plotcurves(fitOne)+
+     # scale_x_continuous(limits = c(0, max(d$contrast)), breaks = seq(0, max(d$contrast), 1))+
+      #scale_y_continuous(limits = c(0,1), breaks = seq(0, 1, 0.1))+
+      #ggtitle(paste("pp", pp, ":", "condition ", cond))
+    #show(x)
+    
+    thresh[row, 1] <- pp
+    thresh[row, 2] <- cond
+    thresh[row, 3] <- fitOne$thresholds[1]
+    thresh[row, 4] <- fitOne$thresholds[2]
+    thresh[row, 5] <- minPercCorr
+      
+    } else{
+      thresh[row, 1] <- pp
+      thresh[row, 2] <- cond
+      thresh[row, 3] <- minContrast
+      thresh[row, 4] <- p
+      thresh[row, 5] <- minPercCorr
+    }
+    
+    
+  }
+}
+
+thresh <- thresh %>%
+  mutate_if(is.numeric, round, digits = 2)%>%
+  mutate(cs = 2+log10(1/threshold))
+  
+
+#thresh <- thresh %>%
+#  filter(ppid != 6)%>%
+#  filter(ppid != 11)
+#write.csv(thresh, "../dataExp2/csThresh.csv")
+```
+```{r fit cs}
+
+data <- data[order(data$id, data$Eye.Condition, data$contrast), ]
+
+
+condList <- unique(data$Eye.Condition)
+
+pplist <- unique(data$id)
+# pplist <- 26
+thresh <- data.frame(matrix(
+  data = NA,
+  nrow = length(pplist)*length(condList),
+  ncol = 3))
+  
+cols <- c("ppid", "condition",
+          "threshold")
+
+
+
+colnames(thresh) <- cols
+
+rm(cols)
+
+row = 0
+
+for (pp in pplist) {
+  for (cond in condList) {
+    
+    d <- data %>%
+      filter(id == pp) %>%
+      filter(Eye.Condition == cond)
+    
+    print(paste("pp = ", pp))
+    print(paste("cond = ", cond))
+    
+    minPercCorrect <- min(d$percCorrect)
+    print(paste("minPercCorrect =", minPercCorrect))
+    
+    row = row + 1
+    
+    if(minPercCorr < p){
+      temp <- d %>%
+        filter(percCorrect >= p)
+      temp <- min(temp$contrast)
+    }else{
+      temp <- min(d$contrast)
+    }
+      thresh[row, 1] <- pp
+      thresh[row, 2] <- cond
+      thresh[row, 3] <- temp
+      
+  }
+}
+
+cs <- thresh %>%
+  group_by(ppid, condition)%>%
+  mutate(cs = 2+log10(1/threshold))%>%
+  filter(threshold < 20)
+  
+```
+
+```{r plot}
+
+ggplot(cs, aes(x = condition, y = cs))+
+  geom_boxplot()+ 
+  geom_jitter()
+
+cs %>%
+  ungroup()%>%
+  group_by(condition)%>%
+  summarise(mean = mean(cs))
+```
+```{r save cs data}
+
+write.csv(cs, "../data/processed/csThresh.csv")
+```

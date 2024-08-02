@@ -1,0 +1,301 @@
+---
+title: "0-dataImport"
+author: "Will Sheppard"
+date: "2024-01-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+
+require(tidyverse)
+```
+
+let's start with the demographics
+
+
+```{r import demog data}
+
+
+demogList <- list.files(path = "../data", pattern = "6dum.csv")
+
+temp =NULL
+
+for (file in demogList) {
+  path <- paste("../data/", file, sep = "")
+  temp <- c(temp, path)
+}
+
+demogFiles = lapply(temp, read.csv)
+
+allDemog <- bind_rows(demogFiles)%>%
+  select(-starts_with("GM"), -starts_with("FM"), -starts_with("PS"), -contains("cataract_pred"), -contains("GVF"), starts_with("branch"))%>%
+  filter(Event.Index != "END OF FILE")
+
+```
+
+```{r save demog}
+
+write.csv(allDemog, "../data/processed/demogLong.csv")
+```
+
+import fitts files
+```{r import fitts data}
+
+fittsPatterns <- c("p5uw", "tpox", "sgnv", "43se", "hg5t", "sqpr", "osyu", "zuoj")
+
+fittsList <- NULL
+
+for (pattern in fittsPatterns) {
+  list <- list.files(path = "../data", pattern = pattern)
+  fittsList <- c(fittsList, list)
+}
+
+fittsTemp <- NULL
+
+for (file in fittsList) {
+  path <- paste("../data/", file, sep = "")
+  fittsTemp <- c(fittsTemp, path)
+}
+
+fittsFiles = lapply(fittsTemp, read.csv)
+
+monoKeys <- c("task-sgnv", "task-43se", "task-hg5t", "task-sqpr")
+
+
+allFitts <- bind_rows(fittsFiles)%>%
+  mutate(Eye.Condition = case_when(
+    Tree.Node.Key %in% monoKeys ~ "Mono",
+    TRUE ~ "Binoc"
+  )) %>%
+  select(Participant.Private.ID, Eye.Condition, Task.Name, Spreadsheet, Trial.Number, structure, xR, yR, xL, yL, size, Reaction.Time)
+allFitts <- na.omit(allFitts)
+```
+
+```{r save fitts}
+
+write.csv(allFitts, "../data/processed/fittsLong.csv")
+```
+
+import visual search
+```{r import visual search data}
+
+xy <- read_csv("../visualSearch/letterCoordsValues.csv")
+
+vsPatterns <- c("xa72", "9zzh", "i37h", "3u5y")
+
+vsList <- NULL
+
+for (pattern in vsPatterns) {
+  list <- list.files(path = "../data", pattern = pattern)
+  vsList <- c(vsList, list)
+}
+
+vsTemp <- NULL
+
+for (file in vsList) {
+  path <- paste("../data/", file, sep = "")
+  vsTemp <- c(vsTemp, path)
+}
+
+vsFiles = lapply(vsTemp, read.csv)
+
+vsMonoKeys <- c("task-9zzh", "task-i37h")
+
+images <- c("Image1.PNG", "Image2.PNG", "Image3.PNG", "Image4.PNG")
+
+allVs <- bind_rows(vsFiles)%>%
+  mutate(Eye.Condition = case_when(
+    Tree.Node.Key %in% vsMonoKeys ~ "Mono",
+    TRUE ~ "Binoc"
+  ))%>%
+  filter(VS_Puzzle %in% images)%>%
+  filter(Response == "click")%>%
+  select(Participant.Private.ID, Task.Name, Eye.Condition, 
+        VS_Puzzle,  Reaction.Time, X.Coordinate, Y.Coordinate)
+
+allVs <- merge(allVs, xy) %>%
+  mutate(correct = case_when(
+    X.Coordinate >= xMin & X.Coordinate <= xMax & Y.Coordinate >= yMin & Y.Coordinate <= yMax ~ 1,
+    TRUE ~ 0
+  ))
+```
+
+```{r save vs}
+
+write.csv(allVs, "../data/processed/vsLong.csv")
+```
+
+```{r import va data}
+
+vaPatterns <- c("task-v321", "task-cbqt", "task-8uqp", "task-fp5t", "task-rnwg", 
+                   "task-8lqq", "task-w9qt", "task-t7pr", "task-yvet", "task-sm8i",
+                "task-27g9", "task-sdmv", "task-div7", "task-1dcg", "task-mobr",
+                    "task-qr76", "task-tbvc", "task-te92", "task-bhrz", "task-21io",
+                "task-xddp", "task-6v3o", "task-kna9", "task-i4cd", "task-zip7",
+                    "task-z8mr", "task-2cta", "task-gepb", "task-2hnp", "task-zcvm",
+                "task-o9ch", "task-28bf", "task-fwg1", "task-z7iw", "task-md11",
+                     "task-do91", "task-wsb8", "task-h3db", "task-jslo", "task-m4vj")
+
+vaList <- NULL
+
+for (pattern in vaPatterns) {
+  list <- list.files(path = "../data", pattern = pattern)
+  vaList <- c(vaList, list)
+}
+
+vaTemp <- NULL
+
+for (file in vaList) {
+  path <- paste("../data/", file, sep = "")
+  vaTemp <- c(vaTemp, path)
+}
+
+vaFiles = lapply(vaTemp, read.csv)
+
+vaMonoKeys <- c("task-v321", "task-cbqt", "task-8uqp", "task-fp5t", "task-rnwg", 
+                   "task-8lqq", "task-w9qt", "task-t7pr", "task-yvet", "task-sm8i","task-o9ch", "task-28bf", "task-fwg1", "task-z7iw", "task-md11",
+                     "task-do91", "task-wsb8", "task-h3db", "task-jslo", "task-m4vj")
+
+vaConv  <- read_csv("../logmarConv.csv")
+
+vaLongFiles <- NULL
+vaShortFiles <- NULL
+
+numVaFiles <- 1:length(vaFiles)
+
+for (file in numVaFiles) {
+  temp <- vaFiles[[file]] 
+  
+  temp <- temp %>%
+    select(Participant.Private.ID, Zone.Type, Tree.Node.Key, Screen.Name, Attempt, Correct, Incorrect, Dishonest)
+  if(nrow(temp) > 1){
+    
+    vaLongFiles <- bind_rows(vaLongFiles, temp)
+  }else{
+    vaShortFiles <- bind_rows(vaShortFiles, temp)
+  }
+  #show(head(temp))
+  
+  vaOut <- vaLongFiles %>%
+    filter(Zone.Type == "response_text_entry")%>%
+    select(Participant.Private.ID, Tree.Node.Key, Screen.Name, Attempt, Correct, Incorrect, Dishonest)%>%
+  mutate(logMAR = case_when(
+    Screen.Name == "Level1" ~ 1.1,
+    Screen.Name == "Level2" ~ 1,
+    Screen.Name == "Level3" ~ 0.9,
+    Screen.Name == "Level4" ~ 0.8,
+    Screen.Name == "Level5" ~ 0.7,
+    Screen.Name == "Level6" ~ 0.6,
+    Screen.Name == "Level7" ~ 0.5,
+    Screen.Name == "Level8" ~ 0.4,
+    Screen.Name == "Level9" ~ 0.3,
+    Screen.Name == "Level10" ~ 0.2,
+    Screen.Name == "Level11" ~ 0.1,
+    Screen.Name == "Level12" ~ 0.0,
+    Screen.Name == "Level13" ~ -0.1,
+    Screen.Name == "Level14" ~ -0.2,
+    Screen.Name == "Level15" ~ -0.3
+  ))%>%
+  mutate(Eye.Condition = case_when(
+    Tree.Node.Key %in% vaMonoKeys ~ "Mono",
+    TRUE ~ "Binoc"
+  )) %>%
+    select(-Tree.Node.Key)
+  
+  
+  
+}
+
+allVa <- merge(vaOut, vaConv)
+
+
+#vaFiles
+```
+
+```{r save va}
+
+write.csv(allVa, "../data/processed/vaLong.csv")
+```
+
+```{r import cs data}
+
+require(stringi)
+
+csPatterns <- c("task-j73i", "task-bfvh", "task-n858", "task-3x99", "task-38w1", 
+                   "task-pi5h", "task-hfl1", "task-opgx", "task-lwqo", "task-h6z8",
+                "task-rk85", "task-8dap", "task-3zz8", "task-f2kk", "task-5peh",
+                    "task-6lcm", "task-xngf", "task-qpfg", "task-ryyz", "task-zjdw",
+                "task-bp17", "task-nq8y", "task-nu2s", "task-1cqs", "task-bzq9", "
+                    task-dyf7", "task-6x8e", "task-fj3l", "task-ba6q", "task-l16k",
+                "task-wsav", "task-4pqm", "task-ghuw", "task-1i17", "task-j3lk",
+                     "task-wdxj", "task-w9bs", "task-6cxl", "task-yrfp", "task-tm55")
+
+csList <- NULL
+
+for (pattern in csPatterns) {
+  list <- list.files(path = "../data", pattern = pattern)
+  csList <- c(csList, list)
+}
+
+csTemp <- NULL
+
+for (file in csList) {
+  path <- paste("../data/", file, sep = "")
+  csTemp <- c(csTemp, path)
+}
+
+csFiles = lapply(csTemp, read.csv)
+
+csMonoKeys <- c("task-j73i", "task-bfvh", "task-n858", "task-3x99", "task-38w1", 
+                   "task-pi5h", "task-hfl1", "task-opgx", "task-lwqo", "task-h6z8",
+                "task-wsav", "task-4pqm", "task-ghuw", "task-1i17", "task-j3lk",
+                     "task-wdxj", "task-w9bs", "task-6cxl", "task-yrfp", "task-tm55")
+
+csLongFiles <- NULL
+csShortFiles <- NULL
+
+numCsFiles <- 1:length(csFiles)
+
+for (file in numCsFiles) {
+  temp <- csFiles[[file]] 
+  
+  temp <- temp %>%
+    select(Participant.Private.ID, Zone.Type, Tree.Node.Key, Screen.Name, Attempt, Correct, Incorrect, Dishonest)
+  if(nrow(temp) > 1){
+    
+    csLongFiles <- bind_rows(csLongFiles, temp)
+  }else{
+    csShortFiles <- bind_rows(csShortFiles, temp)
+  }
+  #show(head(temp))
+  
+  csOut <- csLongFiles %>%
+    filter(Zone.Type == "response_text_entry")%>%
+    filter(Screen.Name != "Screen 1")%>%
+    select(Participant.Private.ID, Tree.Node.Key, Screen.Name, Attempt, Correct, Incorrect, Dishonest) %>%
+  mutate(Eye.Condition = case_when(
+    Tree.Node.Key %in% csMonoKeys ~ "Mono",
+    TRUE ~ "Binoc"
+  )) %>%
+    select(-Tree.Node.Key)
+  
+  
+  
+}
+
+allCs <- csOut
+
+allCs$contrast <- 101 - as.numeric(stri_extract_last_regex(csOut$Screen.Name, "\\d+"))
+
+
+
+```
+
+```{r save cs}
+
+write.csv(allCs, "../data/processed/csLong.csv")
+```
