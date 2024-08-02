@@ -360,7 +360,7 @@ fittsFig <- d %>%
               group = visCond, color = visCond, linetype = visCond),
               method = "lm",
               se = F)+
-  xlab("Index of difficulty")+
+  xlab("Index of difficulty (ID)")+
   ylab("Mean response time (ms)")+
   theme_bw()+
   theme(legend.title = element_blank(),
