@@ -107,7 +107,7 @@ data <- outliersRemoved %>%
   ))%>%
   mutate(diffInd = round(diffInd, digits = 2))
 
-vs <- read.csv("./visualSearchTimes.csv")
+vs <- read.csv("./data/processed/visualSearchTimes.csv")
 
 d <- merge(data, vs)%>%
   select(-X)
@@ -214,23 +214,23 @@ summary(gammaTwo)
 # bobyqa - failed to Converge
 # nloptwrap - failed to Converge
 # Nelder_Mead - failed to Converge
-gammaTwoNoST <- glmer(rt ~ visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
-                   (visCondNum + diffInd.s|id), # RANDOM
-              family = Gamma(link = "identity"),
-              data = d, 
-              control = glmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 10000000)))
-summary(gammaTwoNoST)
+# gammaTwoNoST <- glmer(rt ~ visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
+#                    (visCondNum + diffInd.s|id), # RANDOM
+#               family = Gamma(link = "identity"),
+#               data = d, 
+#               control = glmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 10000000)))
+# summary(gammaTwoNoST)
 
 # bobyqa - failed to converge
 # nloptwrap - is singular
 # Nelder_Mead - failed to converge
 # # (diffInd.s|id) has lowest varaince, remove
-gammaThreeNoST <- glmer(rt ~ visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
-                   (visCondNum|id) + (diffInd.s|id), # RANDOM
-              family = Gamma(link = "identity"),
-              data = d, 
-              control = glmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 10000000)))
-summary(gammaThreeNoST)
+# gammaThreeNoST <- glmer(rt ~ visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
+#                    (visCondNum|id) + (diffInd.s|id), # RANDOM
+#               family = Gamma(link = "identity"),
+#               data = d, 
+#               control = glmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 10000000)))
+# summary(gammaThreeNoST)
 
 # bobyqa - Converged
 # nloptwrap - did not try 
@@ -244,6 +244,16 @@ summary(gammaFourNoST)
 
 gammaFinal <- gammaTwo
 gammaFinalNoST <- gammaFourNoST
+
+d$rt.r <- round(d$rt, digits = -1)
+
+gammaFinal.R <- glmer(rt.r ~ visSearch.s + visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
+                   (visCondNum + diffInd.s|id), # RANDOM
+              family = Gamma(link = "identity"),
+              data = d, 
+              control = glmerControl(optimizer = "nloptwrap", optCtrl = list(maxfun = 10000000)))
+summary(gammaFinal.R)
+
 
 gammResiduals <- resid(gammaFinal) 
 
@@ -278,7 +288,7 @@ modelsummary(list("Linear" = linModFinal, "Inverse Gaussian" = invGfinal, "Gamma
              estimate = "{estimate} [{conf.low}, {conf.high}]{stars}",
              statistic = "({std.error})",
              shape = term ~ model + statistic, #statistics in separate columns
-             fmt = fmt_decimal(digits = 2, pdigits = 3),
+             fmt = fmt_decimal(digits = 0, pdigits = 3),
              output = "fittsDistTable.html"
              )
 
@@ -288,56 +298,22 @@ modelsummary(list("Gamma" = gammaFinal, "Gamma No ST" = gammaFinalNoST),
              estimate = "{estimate} [{conf.low}, {conf.high}]{stars}",
              statistic = "({std.error})",
              shape = term ~ model + statistic, #statistics in separate columns
-             fmt = fmt_decimal(digits = 2, pdigits = 3),
+             fmt = fmt_decimal(digits = 0, pdigits = 3),
              gof_omit = 'RMSE|IC|Obs',
              output = "fittsWithAndWithoutST.html"
              )
 
+modelsummary(list("Gamma" = gammaFinal, "Rounded" = gammaFinal.R),
+             stars = T,
+             title = "Clicking task model outpus",
+             estimate = "{estimate} [{conf.low}, {conf.high}]{stars}",
+             statistic = "({std.error})",
+             shape = term ~ model + statistic, #statistics in separate columns
+             fmt = fmt_decimal(digits = 0, pdigits = 3)
+             )
+
 ```
 
-the distance * condition interaction is not clear
-```{r interaction deep dive}
-
-d %>%
-  ggplot(aes(x=rt, y=diffInd) ) +
-  geom_bin2d() +
-  theme_bw()+
-  facet_grid(~visCond)
-
-d %>%
-  ggplot(aes(x = rt, fill = as.factor(diffInd)))+
-  geom_density(alpha = 0.4)+
-  facet_grid(~visCond)
-
-d %>%
-  ggplot(aes(x = rt, fill = as.factor(diffInd)))+
-  geom_boxplot()+
-  facet_grid(~visCond)
-
-d %>%
-  mutate(diffInd = as.factor(diffInd))%>%
-  group_by(visCond, diffInd) %>%
-  summarise(se = sd(rt) / sqrt(length(rt)),
-            rt = mean(rt))%>%
-  ggplot(aes(x = diffInd, y = rt))+
-  geom_col(aes(fill = visCond), position = position_dodge(0.8), width = 0.7)+
-  geom_errorbar(
-    aes(ymin = rt-se, ymax = rt+se, group = visCond),
-    width = 0.2, position = position_dodge(0.8)
-    )+
-  scale_fill_manual(values = c("grey80", "grey30"))+
-  xlab("Index of difficulty")+
-  ylab("Response time (ms)")+
-  theme_bw()+
-  theme(legend.title = element_blank())#+
- # set axis limits in coord_cartesian
- #coord_cartesian(ylim = c(800, 1300))
-
-ggplot(fortify(gammaFinal), aes(x = rt, y = diffInd, color= visCond)) +
-  stat_summary(fun.data=mean_se, geom="pointrange") +
-  stat_summary(aes(y=.fitted), fun.y=mean, geom="line")
-  
-```
 
 
 
@@ -393,51 +369,6 @@ ggsave('../figures/SUBMISSION/figure4.png',
 ```
 
 
-```{r model maximisation comparison}
 
-gammaMin <- glmer(rt ~ visSearch.s + visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
-                   (1|id), # RANDOM
-              family = Gamma(link = "identity"),
-              data = d, 
-              control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 10000000)))
-
-
-gammaTwo <- glmer(rt ~ visSearch.s + visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
-                   (visCondNum|id), # RANDOM
-              family = Gamma(link = "identity"),
-              data = d, 
-              control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 10000000)))
-
-gammaTwoA <- glmer(rt ~ visSearch.s + visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
-                   (diffInd.s|id), # RANDOM
-              family = Gamma(link = "identity"),
-              data = d, 
-              control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 10000000)))
-
-gammaThree  <- glmer(rt ~ visSearch.s + visCondNum + diffInd.s + visCondNum*diffInd.s + #FIXED
-                   (visCondNum|id) + (diffInd.s|id), # RANDOM
-              family = Gamma(link = "identity"),
-              data = d, 
-              control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 10000000)))
-
-```
-
-```{r model max table}
-
-modelsummary(list("Intercept only" = gammaMin, 
-                  "Visual condition slope only" = gammaTwo,
-                  "Index of Difficulty slope only" = gammaTwoA,
-                  "Visual condition and index of difficuly slopes" = gammaThree,
-                  "Visual condition and index of difficuly slopes with correlations" = gammaFinal),
-             stars = T,
-             title = "Clicking task model outpus",
-             estimate = "{estimate} [{conf.low}, {conf.high}]{stars}",
-             statistic = "({std.error})",
-             #shape = term ~ model + statistic, #statistics in separate columns
-             fmt = fmt_decimal(digits = 2, pdigits = 3),
-             gof_omit = 'RMSE|IC|Obs'
-             )
-
-```
 
 

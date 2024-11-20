@@ -101,7 +101,7 @@ means <- d %>%
   group_by(id, visCondNum)%>%
   summarise(visSearch = mean(rt))
 
-write.csv(means, "./visualSearchTimes.csv")
+write.csv(means, "./data/processed/visualSearchTimes.csv")
 ```
 
 effect of visual condition approaching sig
@@ -152,6 +152,14 @@ summary(invGmax)
 
 
 invGfinal <- invGmax
+
+d$rt.r <- round(d$rt, digits = -1)
+
+invGfinal.r <- glmer(rt.r ~ visCondNum + (1|id) + (1|puzzleNum),
+              family = inverse.gaussian(link = "identity"),
+              data = d, 
+              control = glmerControl(optimizer = "Nelder_Mead", optCtrl = list(maxfun = 10000000))
+              )
 ```
 
 
@@ -192,34 +200,22 @@ modelsummary(list("Linear" = linMod, "Inverse Gaussian" = invGfinal, "Gamma" = g
              estimate = "{estimate} [{conf.low}, {conf.high}]{stars}",
              statistic = "({std.error})",
              shape = term ~ model + statistic, #statistics in separate columns
-             fmt = fmt_decimal(digits = 2, pdigits = 3),
+             fmt = fmt_decimal(digits = 0, pdigits = 3),
              output = "vsDistTable.html"
              )
 
-modelsummary(list("Inverse Gaussian" = invGfinal),
+modelsummary(list("Inverse Gaussian" = invGfinal, "Rounded" = invGfinal.r),
              stars = T,
              title = "Visual search model outpus",
              estimate = "{estimate} [{conf.low}, {conf.high}]{stars}",
              statistic = "({std.error})",
              shape = term ~ model + statistic, #statistics in separate columns
-             fmt = fmt_decimal(digits = 2, pdigits = 3)
+             fmt = fmt_decimal(digits = 0, pdigits = 3)
              )
 
 ```
 
-r2
-```{r r2}
 
-require(performance)
-
-r2_nakagawa(invGfinal)
-
-require(r2mlm)
-
-r2mlm(invGfinal)
-
-
-```
 
 
 ```{r paper plot}
