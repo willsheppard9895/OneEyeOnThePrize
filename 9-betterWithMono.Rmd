@@ -1,0 +1,131 @@
+---
+title: "9-betterWithFullVision"
+author: "Will Sheppard"
+date: "2024-11-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries 1}
+
+require(tidyverse)
+require(rstatix)
+```
+
+
+```{r read data}
+dataImport <- read_csv("../data/processed/fittsLong.csv")
+head(dataImport)
+
+pps <- read_csv("../data/finalParticipants.csv")
+pps <- pps$x
+
+
+```
+
+```{r pos}
+
+
+allData <- dataImport %>%
+  filter(Participant.Private.ID %in% pps)%>%
+  group_by(Participant.Private.ID)%>%
+  mutate(id = as.factor(dplyr::cur_group_id()))%>%
+  mutate(dist = sqrt(xR^2 + yR^2))%>%
+  mutate(diffInd = log2((2*dist)/size))
+# extract position from structure
+allData$pos <- as.factor(str_extract(allData$structure, "(?<=pos)."))
+
+```
+
+let's identify and plot the outlier values - 1.5 IQR above or below 3rd or first quartile
+```{r is extreme}
+
+extremePoints <- allData %>%
+  group_by(id, Eye.Condition, structure) %>%
+  mutate(ext = as.numeric(is_outlier(Reaction.Time)))
+
+
+(sum(extremePoints$ext)/length(extremePoints$ext))*100
+
+# moving through 4 layers of filtering to get rid of outliers. 
+# first remove general outliers
+# then get rid of outliers on the individual level (no task component)
+# get rid of outliers on a task level (no indivisual component)
+# get rid of any remaining outliers on a micro level
+outliersRemoved <- allData %>% 
+  # mutate(outlier = is_outlier(Reaction.Time))%>% # create logical markers for general outliers. this will get rid of the very extreme points
+  # mutate(outlier = as.numeric(outlier))%>%
+  # filter(outlier == 0)%>%
+  # group_by(id)%>% # this should catch any very strange behaviours at an individual level
+  # mutate(outlier = is_outlier(Reaction.Time))%>% # 
+  # mutate(outlier = as.numeric(outlier))%>%
+  # filter(outlier == 0)%>%
+  # group_by(Eye.Condition, structure)%>% # this will catch strange behaviours at a task level
+  # mutate(outlier = is_outlier(Reaction.Time))%>%
+  # mutate(outlier = as.numeric(outlier))%>%
+  # filter(outlier == 0) %>%
+  group_by(id, Eye.Condition, structure)%>% # this will catch strange behaviours al the microlevel
+  mutate(outlier = is_outlier(Reaction.Time))%>%
+  mutate(outlier = as.numeric(outlier))%>%
+  filter(outlier == 0) %>%
+  ungroup()
+
+percRem = (length(allData$Participant.Private.ID)-length(outliersRemoved$Participant.Private.ID))*100/length(allData$Participant.Private.ID)
+
+# this removes 11% of data, which is a lot
+outliersRemoved %>%
+  ggplot(aes(x = as.factor(diffInd), y = Reaction.Time, color = Eye.Condition))+
+    geom_boxplot()
+
+```
+
+let's remove the extreme data points: extra long movements suggest that they were not concentrating and extra short movemnts suggest that they haave guessed the posiitons
+```{r tidy data set}
+
+data <- outliersRemoved %>%
+  select(id, Eye.Condition, diffInd, Reaction.Time, structure)%>%
+  rename(visCond = Eye.Condition,
+         rt = Reaction.Time
+         )%>%
+  mutate(visCondNum = case_when(
+    visCond == 'Mono' ~ 1,
+    TRUE ~ 0
+  ))%>%
+  mutate(diffInd = round(diffInd, digits = 2))
+
+vs <- read.csv("./data/processed/visualSearchTimes.csv")
+
+d <- merge(data, vs)%>%
+  select(-X)
+
+d$diffInd.s <- as.numeric(scale(d$diffInd))
+d$visSearch.s <- as.numeric(scale(d$visSearch))
+
+d$visCond <- as.factor(d$visCond)
+
+str(d)
+```
+
+```{r initial look}
+
+pps <- read_csv("../data/finalParticipants.csv")
+
+condDF <- read_csv("C:/Users/cn13ws/OneDrive - University of Leeds/RESEARCH - msc2021 - Fiits Law/msc21Analysis/data/processed/firstCondition.csv")%>%
+  rename(x = Participant.Private.ID)
+
+test <- left_join(pps, condDF)
+
+wideTable <- d %>%
+  group_by(id, visCond)%>%
+  summarise(rt = mean(rt)) %>%
+  pivot_wider(id_cols = id, 
+              names_from = visCond,
+              values_from = rt)
+
+betterMono <- wideTable %>%
+  filter(Mono < Binoc)
+```
+

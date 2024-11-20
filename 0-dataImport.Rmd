@@ -31,7 +31,10 @@ for (file in demogList) {
 
 demogFiles = lapply(temp, read.csv)
 
-allDemog <- bind_rows(demogFiles)%>%
+allDemog <- bind_rows(demogFiles)
+
+
+demogSelect <- allDemog %>%
   select(-starts_with("GM"), -starts_with("FM"), -starts_with("PS"), -contains("cataract_pred"), -contains("GVF"), starts_with("branch"))%>%
   filter(Event.Index != "END OF FILE")
 
@@ -39,7 +42,36 @@ allDemog <- bind_rows(demogFiles)%>%
 
 ```{r save demog}
 
-write.csv(allDemog, "../data/processed/demogLong.csv")
+write.csv(demogSelect, "../data/processed/demogLong.csv")
+```
+
+```{r condition order}
+
+debriefList <- list.files(path = "../data", pattern = "sod6.csv")
+
+temp =NULL
+
+for (file in debriefList) {
+  path <- paste("../data/", file, sep = "")
+  temp <- c(temp, path)
+}
+
+debriefFiles = lapply(temp, read.csv)
+
+allDebrief <- bind_rows(demogFiles)
+
+condDF <- allDebrief %>%
+  select(Participant.Private.ID, randomiser.qd1r)%>%
+  group_by(Participant.Private.ID)%>%#
+  summarise(first = first(randomiser.qd1r))
+
+
+
+```
+
+```{r save condDF}
+
+write.csv(condDF, "C:/Users/cn13ws/OneDrive - University of Leeds/RESEARCH - msc2021 - Fiits Law/msc21Analysis/data/processed/firstCondition.csv")
 ```
 
 import fitts files
